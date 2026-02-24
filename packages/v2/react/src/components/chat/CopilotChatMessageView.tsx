@@ -506,6 +506,7 @@ export function CopilotChatMessageView({
   return (
     <div
       data-copilotkit
+      data-testid="copilot-message-list"
       className={twMerge("cpk:flex cpk:flex-col", className)}
       {...props}
     >
@@ -526,6 +527,7 @@ CopilotChatMessageView.Cursor = function Cursor({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-testid="copilot-loading-cursor"
       className={twMerge(
         "cpk:w-[11px] cpk:h-[11px] cpk:rounded-full cpk:bg-foreground cpk:animate-pulse-cursor cpk:ml-1",
         className,
