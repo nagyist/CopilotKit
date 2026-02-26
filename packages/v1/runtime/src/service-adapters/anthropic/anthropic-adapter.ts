@@ -101,6 +101,7 @@ export class AnthropicAdapter implements CopilotServiceAdapter {
     const provider = createAnthropic({
       baseURL: anthropic.baseURL,
       apiKey: anthropic.apiKey,
+      headers: (anthropic as any)._options?.defaultHeaders,
     });
     return provider(this.model);
   }

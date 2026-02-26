@@ -84,6 +84,7 @@ export class GroqAdapter implements CopilotServiceAdapter {
     const provider = createOpenAI({
       baseURL: groq.baseURL,
       apiKey: groq.apiKey,
+      headers: (groq as any)._options?.defaultHeaders,
       name: "groq",
     });
     return provider(this.model);

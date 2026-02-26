@@ -130,6 +130,9 @@ export class OpenAIAdapter implements CopilotServiceAdapter {
     const provider = createOpenAI({
       baseURL: openai.baseURL,
       apiKey: openai.apiKey,
+      organization: openai.organization ?? undefined,
+      project: openai.project ?? undefined,
+      headers: (openai as any)._options?.defaultHeaders,
     });
     return provider(this.model);
   }
