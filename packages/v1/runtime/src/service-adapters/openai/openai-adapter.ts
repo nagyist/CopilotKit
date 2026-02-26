@@ -62,7 +62,7 @@ import {
   limitMessagesToTokenCount,
 } from "./utils";
 import { randomUUID } from "@copilotkit/shared";
-import { convertServiceAdapterError } from "../shared";
+import { convertServiceAdapterError, getSdkClientOptions } from "../shared";
 
 const DEFAULT_MODEL = "gpt-4o";
 
@@ -127,7 +127,7 @@ export class OpenAIAdapter implements CopilotServiceAdapter {
 
   getLanguageModel(): LanguageModel {
     const openai = this.ensureOpenAI();
-    const options = (openai as any)._options ?? {};
+    const options = getSdkClientOptions(openai);
     const provider = createOpenAI({
       baseURL: openai.baseURL,
       apiKey: openai.apiKey,

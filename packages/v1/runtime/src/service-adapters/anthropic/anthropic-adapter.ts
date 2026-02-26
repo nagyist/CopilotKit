@@ -37,7 +37,7 @@ import {
 } from "./utils";
 
 import { randomId, randomUUID } from "@copilotkit/shared";
-import { convertServiceAdapterError } from "../shared";
+import { convertServiceAdapterError, getSdkClientOptions } from "../shared";
 
 const DEFAULT_MODEL = "claude-3-5-sonnet-latest";
 
@@ -98,7 +98,7 @@ export class AnthropicAdapter implements CopilotServiceAdapter {
 
   getLanguageModel(): LanguageModel {
     const anthropic = this.ensureAnthropic();
-    const options = (anthropic as any)._options ?? {};
+    const options = getSdkClientOptions(anthropic);
     const provider = createAnthropic({
       baseURL: anthropic.baseURL,
       apiKey: anthropic.apiKey,

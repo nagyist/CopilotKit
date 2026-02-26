@@ -29,7 +29,7 @@ import {
   limitMessagesToTokenCount,
 } from "../openai/utils";
 import { randomUUID } from "@copilotkit/shared";
-import { convertServiceAdapterError } from "../shared";
+import { convertServiceAdapterError, getSdkClientOptions } from "../shared";
 
 const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
@@ -81,7 +81,7 @@ export class GroqAdapter implements CopilotServiceAdapter {
 
   getLanguageModel(): LanguageModel {
     const groq = this.ensureGroq();
-    const options = (groq as any)._options ?? {};
+    const options = getSdkClientOptions(groq);
     const provider = createOpenAI({
       baseURL: groq.baseURL,
       apiKey: groq.apiKey,
