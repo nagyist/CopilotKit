@@ -1,5 +1,13 @@
 # @copilotkitnext/sqlite-runner
 
+## 1.52.0
+
+### Patch Changes
+
+- ef0f539: Add reasoning support and default components for reasoning messages
+- Updated dependencies [ef0f539]
+  - @copilotkitnext/runtime@1.52.0
+
 ## 1.52.0-next.8
 
 ### Patch Changes

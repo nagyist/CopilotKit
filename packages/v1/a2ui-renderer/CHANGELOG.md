@@ -1,5 +1,18 @@
 # @copilotkit/a2ui-renderer
 
+## 1.52.0
+
+### Patch Changes
+
+- 80418e3: Fix a2ui-renderer to use workspace:\* for @copilotkit/react-core peer dependency, preventing lockfile drift on release
+- Updated dependencies [6dd6c84]
+- Updated dependencies [d77f347]
+- Updated dependencies [2007f8b]
+- Updated dependencies [ef0f539]
+- Updated dependencies [412965a]
+- Updated dependencies [5f941db]
+  - @copilotkit/react-core@1.52.0
+
 ## 1.52.0-next.8
 
 ### Patch Changes

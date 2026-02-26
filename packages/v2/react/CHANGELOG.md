@@ -1,5 +1,20 @@
 # @copilotkitnext/react
 
+## 1.52.0
+
+### Patch Changes
+
+- 593859f: feat: add useFrontendComponent wrapper around useFrontendTool
+- d77f347: Added in the useInterrupt hook
+- 2007f8b: feat: useComponent improvements
+- ef0f539: Add reasoning support and default components for reasoning messages
+- 942d397: Add data-testid for easier testing to all CPK UI
+- Updated dependencies [d77f347]
+- Updated dependencies [ef0f539]
+  - @copilotkitnext/core@1.52.0
+  - @copilotkitnext/web-inspector@1.52.0
+  - @copilotkitnext/shared@1.52.0
+
 ## 1.52.0-next.8
 
 ### Patch Changes

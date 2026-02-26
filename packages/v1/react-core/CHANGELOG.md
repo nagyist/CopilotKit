@@ -1,5 +1,34 @@
 # ui
 
+## 1.52.0
+
+### Minor Changes
+
+- 6dd6c84: Adding new v2 features:
+  - useComponent
+  - useRenderTool
+  - useDefaultRenderTool
+
+  Also, fixing issues with styles not being
+  properly scoped for tailwind.
+
+### Patch Changes
+
+- d77f347: Added in the useInterrupt hook
+- 2007f8b: feat: useComponent improvements
+- ef0f539: Add reasoning support and default components for reasoning messages
+- 412965a: Introducing available prop to useFrontendTool()
+- 5f941db: Prevent CPK styles from polluting user app
+- Updated dependencies [593859f]
+- Updated dependencies [d77f347]
+- Updated dependencies [2007f8b]
+- Updated dependencies [ef0f539]
+- Updated dependencies [942d397]
+  - @copilotkitnext/react@1.52.0
+  - @copilotkitnext/core@1.52.0
+  - @copilotkit/shared@1.52.0
+  - @copilotkit/runtime-client-gql@1.52.0
+
 ## 1.52.0-next.8
 
 ### Patch Changes

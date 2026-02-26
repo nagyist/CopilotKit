@@ -1,5 +1,31 @@
 # ui
 
+## 1.52.0
+
+### Minor Changes
+
+- 6dd6c84: Adding new v2 features:
+  - useComponent
+  - useRenderTool
+  - useDefaultRenderTool
+
+  Also, fixing issues with styles not being
+  properly scoped for tailwind.
+
+### Patch Changes
+
+- 7e32e69: chore: fix up style generation
+- 5f941db: Prevent CPK styles from leaking into user app
+- Updated dependencies [6dd6c84]
+- Updated dependencies [d77f347]
+- Updated dependencies [2007f8b]
+- Updated dependencies [ef0f539]
+- Updated dependencies [412965a]
+- Updated dependencies [5f941db]
+  - @copilotkit/react-core@1.52.0
+  - @copilotkit/shared@1.52.0
+  - @copilotkit/runtime-client-gql@1.52.0
+
 ## 1.52.0-next.8
 
 ### Patch Changes
