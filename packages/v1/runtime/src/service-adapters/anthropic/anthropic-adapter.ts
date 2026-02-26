@@ -22,6 +22,8 @@
  * });
  * ```
  */
+import type { LanguageModel } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import type Anthropic from "@anthropic-ai/sdk";
 import {
   CopilotServiceAdapter,
@@ -92,6 +94,15 @@ export class AnthropicAdapter implements CopilotServiceAdapter {
       this.model = params.model;
     }
     this.promptCaching = params?.promptCaching || { enabled: false };
+  }
+
+  getLanguageModel(): LanguageModel {
+    const anthropic = this.ensureAnthropic();
+    const provider = createAnthropic({
+      baseURL: anthropic.baseURL,
+      apiKey: anthropic.apiKey,
+    });
+    return provider(this.model);
   }
 
   private ensureAnthropic(): Anthropic {

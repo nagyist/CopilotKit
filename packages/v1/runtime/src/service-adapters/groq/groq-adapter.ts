@@ -14,6 +14,8 @@
  * return new GroqAdapter({ groq, model: "<model-name>" });
  * ```
  */
+import type { LanguageModel } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import type { Groq } from "groq-sdk";
 import type { ChatCompletionMessageParam } from "groq-sdk/resources/chat";
 import {
@@ -75,6 +77,16 @@ export class GroqAdapter implements CopilotServiceAdapter {
       this.model = params.model;
     }
     this.disableParallelToolCalls = params?.disableParallelToolCalls || false;
+  }
+
+  getLanguageModel(): LanguageModel {
+    const groq = this.ensureGroq();
+    const provider = createOpenAI({
+      baseURL: groq.baseURL,
+      apiKey: groq.apiKey,
+      name: "groq",
+    });
+    return provider(this.model);
   }
 
   private ensureGroq(): Groq {
