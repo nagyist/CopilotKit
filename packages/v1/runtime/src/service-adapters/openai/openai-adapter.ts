@@ -127,12 +127,14 @@ export class OpenAIAdapter implements CopilotServiceAdapter {
 
   getLanguageModel(): LanguageModel {
     const openai = this.ensureOpenAI();
+    const options = (openai as any)._options ?? {};
     const provider = createOpenAI({
       baseURL: openai.baseURL,
       apiKey: openai.apiKey,
       organization: openai.organization ?? undefined,
       project: openai.project ?? undefined,
-      headers: (openai as any)._options?.defaultHeaders,
+      headers: options.defaultHeaders,
+      fetch: options.fetch,
     });
     return provider(this.model);
   }

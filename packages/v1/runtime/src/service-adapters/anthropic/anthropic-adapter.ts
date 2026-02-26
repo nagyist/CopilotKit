@@ -98,10 +98,12 @@ export class AnthropicAdapter implements CopilotServiceAdapter {
 
   getLanguageModel(): LanguageModel {
     const anthropic = this.ensureAnthropic();
+    const options = (anthropic as any)._options ?? {};
     const provider = createAnthropic({
       baseURL: anthropic.baseURL,
       apiKey: anthropic.apiKey,
-      headers: (anthropic as any)._options?.defaultHeaders,
+      headers: options.defaultHeaders,
+      fetch: options.fetch,
     });
     return provider(this.model);
   }

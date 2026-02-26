@@ -81,10 +81,12 @@ export class GroqAdapter implements CopilotServiceAdapter {
 
   getLanguageModel(): LanguageModel {
     const groq = this.ensureGroq();
+    const options = (groq as any)._options ?? {};
     const provider = createOpenAI({
       baseURL: groq.baseURL,
       apiKey: groq.apiKey,
-      headers: (groq as any)._options?.defaultHeaders,
+      headers: options.defaultHeaders,
+      fetch: options.fetch,
       name: "groq",
     });
     return provider(this.model);
