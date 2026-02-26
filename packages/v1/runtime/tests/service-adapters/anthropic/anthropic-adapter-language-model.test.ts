@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AnthropicProviderSettings } from "@ai-sdk/anthropic";
+import { AnthropicAdapter } from "../../../src/service-adapters/anthropic/anthropic-adapter";
+import Anthropic from "@anthropic-ai/sdk";
 
 // Keys from AnthropicProviderSettings that we forward from the Anthropic SDK client.
 type ForwardedAnthropicKeys = "baseURL" | "apiKey" | "headers" | "fetch";
@@ -24,8 +26,11 @@ type _exhaustive =
       };
 const _check: _exhaustive = true;
 
-const mockProviderFn = vi.fn().mockReturnValue({ modelId: "test-model" });
-const mockCreateAnthropic = vi.fn().mockReturnValue(mockProviderFn);
+const { mockProviderFn, mockCreateAnthropic } = vi.hoisted(() => {
+  const mockProviderFn = vi.fn().mockReturnValue({ modelId: "test-model" });
+  const mockCreateAnthropic = vi.fn().mockReturnValue(mockProviderFn);
+  return { mockProviderFn, mockCreateAnthropic };
+});
 
 vi.mock("@ai-sdk/anthropic", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@ai-sdk/anthropic")>();
@@ -58,11 +63,7 @@ describe("AnthropicAdapter.getLanguageModel()", () => {
     vi.clearAllMocks();
   });
 
-  it("forwards all provider-relevant options from the Anthropic SDK client", async () => {
-    const { AnthropicAdapter } =
-      await import("../../../src/service-adapters/anthropic/anthropic-adapter");
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-
+  it("forwards all provider-relevant options from the Anthropic SDK client", () => {
     const customFetch = vi.fn();
     const anthropic = new Anthropic({
       apiKey: "sk-ant-test",
@@ -72,7 +73,7 @@ describe("AnthropicAdapter.getLanguageModel()", () => {
     });
 
     const adapter = new AnthropicAdapter({
-      anthropic: anthropic as any,
+      anthropic,
       model: "claude-3-5-sonnet-latest",
     });
     adapter.getLanguageModel();
@@ -88,13 +89,9 @@ describe("AnthropicAdapter.getLanguageModel()", () => {
     expect(mockProviderFn).toHaveBeenCalledWith("claude-3-5-sonnet-latest");
   });
 
-  it("works with default Anthropic config (no custom options)", async () => {
-    const { AnthropicAdapter } =
-      await import("../../../src/service-adapters/anthropic/anthropic-adapter");
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-
+  it("works with default Anthropic config (no custom options)", () => {
     const anthropic = new Anthropic({ apiKey: "sk-ant-default" });
-    const adapter = new AnthropicAdapter({ anthropic: anthropic as any });
+    const adapter = new AnthropicAdapter({ anthropic });
     adapter.getLanguageModel();
 
     const settings = mockCreateAnthropic.mock.calls[0][0];

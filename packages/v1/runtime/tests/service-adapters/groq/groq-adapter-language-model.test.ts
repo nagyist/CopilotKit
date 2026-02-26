@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { OpenAIProviderSettings } from "@ai-sdk/openai";
+import { GroqAdapter } from "../../../src/service-adapters/groq/groq-adapter";
+import { Groq } from "groq-sdk";
 
 // Groq uses createOpenAI (OpenAI-compatible API), so we check against
 // OpenAIProviderSettings. Same exhaustiveness guard as the OpenAI test.
@@ -23,8 +25,11 @@ type _exhaustive =
       };
 const _check: _exhaustive = true;
 
-const mockProviderFn = vi.fn().mockReturnValue({ modelId: "test-model" });
-const mockCreateOpenAI = vi.fn().mockReturnValue(mockProviderFn);
+const { mockProviderFn, mockCreateOpenAI } = vi.hoisted(() => {
+  const mockProviderFn = vi.fn().mockReturnValue({ modelId: "test-model" });
+  const mockCreateOpenAI = vi.fn().mockReturnValue(mockProviderFn);
+  return { mockProviderFn, mockCreateOpenAI };
+});
 
 vi.mock("@ai-sdk/openai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@ai-sdk/openai")>();
@@ -57,21 +62,17 @@ describe("GroqAdapter.getLanguageModel()", () => {
     vi.clearAllMocks();
   });
 
-  it("forwards all provider-relevant options from the Groq SDK client", async () => {
-    const { GroqAdapter } =
-      await import("../../../src/service-adapters/groq/groq-adapter");
-    const { Groq } = await import("groq-sdk");
-
+  it("forwards all provider-relevant options from the Groq SDK client", () => {
     const customFetch = vi.fn();
     const groq = new Groq({
       apiKey: "gsk-test",
       baseURL: "https://custom-groq.example.com",
       defaultHeaders: { "x-groq": "value" },
       fetch: customFetch,
-    } as any);
+    });
 
     const adapter = new GroqAdapter({
-      groq: groq as any,
+      groq,
       model: "llama-3.3-70b-versatile",
     });
     adapter.getLanguageModel();
@@ -88,13 +89,9 @@ describe("GroqAdapter.getLanguageModel()", () => {
     expect(mockProviderFn).toHaveBeenCalledWith("llama-3.3-70b-versatile");
   });
 
-  it("works with default Groq config (no custom options)", async () => {
-    const { GroqAdapter } =
-      await import("../../../src/service-adapters/groq/groq-adapter");
-    const { Groq } = await import("groq-sdk");
-
-    const groq = new Groq({ apiKey: "gsk-default" } as any);
-    const adapter = new GroqAdapter({ groq: groq as any });
+  it("works with default Groq config (no custom options)", () => {
+    const groq = new Groq({ apiKey: "gsk-default" });
+    const adapter = new GroqAdapter({ groq });
     adapter.getLanguageModel();
 
     const settings = mockCreateOpenAI.mock.calls[0][0];

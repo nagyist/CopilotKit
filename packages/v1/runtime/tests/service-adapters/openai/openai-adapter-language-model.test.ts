@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { OpenAIProviderSettings } from "@ai-sdk/openai";
+import { OpenAIAdapter } from "../../../src/service-adapters/openai/openai-adapter";
+import OpenAI from "openai";
 
 // Keys from OpenAIProviderSettings that we forward from the OpenAI SDK client.
 // If @ai-sdk/openai adds new keys, the type assertion below will fail at
@@ -34,8 +36,11 @@ type _exhaustive =
       };
 const _check: _exhaustive = true;
 
-const mockProviderFn = vi.fn().mockReturnValue({ modelId: "test-model" });
-const mockCreateOpenAI = vi.fn().mockReturnValue(mockProviderFn);
+const { mockProviderFn, mockCreateOpenAI } = vi.hoisted(() => {
+  const mockProviderFn = vi.fn().mockReturnValue({ modelId: "test-model" });
+  const mockCreateOpenAI = vi.fn().mockReturnValue(mockProviderFn);
+  return { mockProviderFn, mockCreateOpenAI };
+});
 
 vi.mock("@ai-sdk/openai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@ai-sdk/openai")>();
@@ -73,11 +78,7 @@ describe("OpenAIAdapter.getLanguageModel()", () => {
     vi.clearAllMocks();
   });
 
-  it("forwards all provider-relevant options from the OpenAI SDK client", async () => {
-    const { OpenAIAdapter } =
-      await import("../../../src/service-adapters/openai/openai-adapter");
-    const OpenAI = (await import("openai")).default;
-
+  it("forwards all provider-relevant options from the OpenAI SDK client", () => {
     const customFetch = vi.fn();
     const openai = new OpenAI({
       apiKey: "azure-key",
@@ -107,11 +108,7 @@ describe("OpenAIAdapter.getLanguageModel()", () => {
     expect(mockProviderFn).toHaveBeenCalledWith("gpt-4o");
   });
 
-  it("works with default OpenAI config (no custom options)", async () => {
-    const { OpenAIAdapter } =
-      await import("../../../src/service-adapters/openai/openai-adapter");
-    const OpenAI = (await import("openai")).default;
-
+  it("works with default OpenAI config (no custom options)", () => {
     const openai = new OpenAI({ apiKey: "sk-test" });
     const adapter = new OpenAIAdapter({ openai });
     adapter.getLanguageModel();
