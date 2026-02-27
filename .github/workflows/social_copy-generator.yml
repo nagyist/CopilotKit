@@ -234,23 +234,56 @@ jobs:
             - Mention CopilotKit by name and link to https://github.com/CopilotKit/CopilotKit
             - If the changes are internal/minor, still generate copy but note it's a maintenance/improvement update
           allowed_tools: "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Read,View,GlobTool,GrepTool"
+          disallowed_tools: "TodoWrite,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
           max_turns: "10"
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Extract Claude result
-        if: steps.verify.outputs.should_run == 'true' && success()
+        if: steps.verify.outputs.should_run == 'true' && always() && steps.claude.outcome != 'skipped'
         id: extract
         run: |
           OUTPUT_FILE="/home/runner/work/_temp/claude-execution-output.json"
           if [ -f "$OUTPUT_FILE" ]; then
-            # Extract the result field from the JSON output
-            node -e "const o=JSON.parse(require('fs').readFileSync('$OUTPUT_FILE','utf8')); process.stdout.write(o.result || '')" > .claude-tmp/result.txt
+            # Try result field first, fall back to extracting last assistant text content
+            node -e "
+              const o = JSON.parse(require('fs').readFileSync('$OUTPUT_FILE', 'utf8'));
+              if (o.result) {
+                process.stdout.write(o.result);
+              }
+            " > .claude-tmp/result.txt
           else
             echo "" > .claude-tmp/result.txt
           fi
 
+          # If result is empty, scan the JSONL log for the last assistant text
+          if [ ! -s .claude-tmp/result.txt ]; then
+            LOG_FILE="/home/runner/work/_temp/claude-execution-output.json"
+            # The output is a single JSON object with a result field, but if that failed,
+            # check for streaming JSONL log
+            JSONL_LOG=$(find /home/runner/work/_temp -name "*.jsonl" 2>/dev/null | head -1)
+            if [ -n "$JSONL_LOG" ]; then
+              node -e "
+                const lines = require('fs').readFileSync('$JSONL_LOG', 'utf8').trim().split('\n');
+                let lastText = '';
+                for (const line of lines) {
+                  try {
+                    const obj = JSON.parse(line);
+                    if (obj.type === 'assistant' && obj.message?.content) {
+                      for (const block of obj.message.content) {
+                        if (block.type === 'text' && block.text && block.text.includes('###')) {
+                          lastText = block.text;
+                        }
+                      }
+                    }
+                  } catch {}
+                }
+                process.stdout.write(lastText);
+              " > .claude-tmp/result.txt
+            fi
+          fi
+
       - name: Upload Claude output artifact
-        if: steps.verify.outputs.should_run == 'true' && success()
+        if: steps.verify.outputs.should_run == 'true' && always() && steps.claude.outcome != 'skipped'
         id: artifact
         uses: actions/upload-artifact@v4
         with:
@@ -259,7 +292,7 @@ jobs:
           retention-days: 30
 
       - name: Update comment with results
-        if: steps.verify.outputs.should_run == 'true' && success()
+        if: steps.verify.outputs.should_run == 'true' && always() && steps.extract.outcome == 'success'
         uses: actions/github-script@v7
         env:
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
@@ -291,7 +324,7 @@ jobs:
             });
 
       - name: Update comment on failure
-        if: steps.verify.outputs.should_run == 'true' && failure()
+        if: steps.verify.outputs.should_run == 'true' && always() && steps.extract.outcome != 'success'
         uses: actions/github-script@v7
         env:
           COMMENT_ID: ${{ steps.verify.outputs.comment_id }}
