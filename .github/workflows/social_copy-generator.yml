@@ -5,6 +5,12 @@ on:
     types: [opened]
   issue_comment:
     types: [edited]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to generate social copies for"
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -14,17 +20,34 @@ permissions:
 
 jobs:
   post-comment:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Post initial comment
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.inputs.pr_number || github.event.pull_request.number }}
         with:
           script: |
+            const prNumber = Number(process.env.PR_NUMBER);
+
+            // Check if there's already a social-copy-generator comment on this PR
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const existing = comments.data.find(c => c.body.includes('<!-- social-copy-generator -->'));
+            if (existing) {
+              console.log(`Comment already exists (id: ${existing.id}), skipping`);
+              return;
+            }
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
+              issue_number: prNumber,
               body: [
                 '<!-- social-copy-generator -->',
                 '### 📣 Social Copy Generator',
@@ -101,6 +124,7 @@ jobs:
             core.setOutput('base_ref', pr.data.base.ref);
             core.setOutput('title', pr.data.title);
             core.setOutput('body', pr.data.body || '(no description)');
+            core.setOutput('number', String(context.issue.number));
 
       - name: Checkout repo
         if: steps.verify.outputs.should_run == 'true'
@@ -112,12 +136,23 @@ jobs:
       - name: Get PR diff
         if: steps.verify.outputs.should_run == 'true'
         id: diff
+        env:
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          MERGE_BASE=$(git merge-base origin/${{ steps.pr.outputs.base_ref }} HEAD)
-          git diff --stat "$MERGE_BASE"..HEAD > /tmp/diff-stat.txt
-          git diff "$MERGE_BASE"..HEAD > /tmp/diff-full.txt
+          # Try git merge-base first (works for open PRs and merged PRs whose base is fetchable)
+          MERGE_BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null) || true
 
-          echo "merge_base=$MERGE_BASE" >> "$GITHUB_OUTPUT"
+          if [ -n "$MERGE_BASE" ]; then
+            git diff --stat "$MERGE_BASE"..HEAD > /tmp/diff-stat.txt
+            git diff "$MERGE_BASE"..HEAD > /tmp/diff-full.txt
+          else
+            # Fallback: use GitHub API diff (works for merged PRs where branch was deleted)
+            echo "Using GitHub API for diff (merge-base not found)"
+            gh pr diff "$PR_NUMBER" --patch > /tmp/diff-full.txt
+            gh pr diff "$PR_NUMBER" | head -200 > /tmp/diff-stat.txt
+          fi
 
       - name: Run Claude Code
         if: steps.verify.outputs.should_run == 'true'
@@ -160,8 +195,7 @@ jobs:
             - If the changes are internal/minor, still generate copy but note it's a maintenance/improvement update
           allowed_tools: "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),View,GlobTool,GrepTool"
           max_turns: "10"
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Update comment with results
         if: steps.verify.outputs.should_run == 'true' && success()
