@@ -217,16 +217,18 @@ jobs:
             4. Generate the following three pieces of content:
 
             ### Output Format
-            Produce your output in EXACTLY this format (including the markdown headers):
+            Produce your output in EXACTLY this format (including the markdown headers).
+            Do NOT include any preamble, analysis summary, or commentary before or after the three sections.
+            Start directly with the first header:
 
             ### 🐦 Twitter/X Post
             (A concise, engaging tweet under 280 characters. Use relevant hashtags. Focus on the user benefit.)
 
             ### 💼 LinkedIn Post
-            (A professional post of 3-5 short paragraphs. Lead with the value proposition. Include a call to action.)
+            (A professional post of 3-5 short paragraphs. Lead with the value proposition. Include a call to action. No length limit.)
 
             ### 📝 Blog Post Draft
-            (A short blog-style announcement of 2-4 paragraphs. Include a title, explain what changed, why it matters, and how to get started.)
+            (A blog-style announcement. Include a title, explain what changed, why it matters, and how to get started. No length limit — be as thorough as needed.)
 
             ## Guidelines
             - Focus on user-facing impact, not implementation details
@@ -238,31 +240,26 @@ jobs:
           max_turns: "10"
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-      - name: Extract Claude result
+      - name: Extract result to markdown
         if: steps.verify.outputs.should_run == 'true' && always() && steps.claude.outcome != 'skipped'
         id: extract
         run: |
           OUTPUT_FILE="/home/runner/work/_temp/claude-execution-output.json"
+          RESULT=""
+
+          # Try result field from output JSON
           if [ -f "$OUTPUT_FILE" ]; then
-            # Try result field first, fall back to extracting last assistant text content
-            node -e "
+            RESULT=$(node -e "
               const o = JSON.parse(require('fs').readFileSync('$OUTPUT_FILE', 'utf8'));
-              if (o.result) {
-                process.stdout.write(o.result);
-              }
-            " > .claude-tmp/result.txt
-          else
-            echo "" > .claude-tmp/result.txt
+              process.stdout.write(o.result || '');
+            ")
           fi
 
-          # If result is empty, scan the JSONL log for the last assistant text
-          if [ ! -s .claude-tmp/result.txt ]; then
-            LOG_FILE="/home/runner/work/_temp/claude-execution-output.json"
-            # The output is a single JSON object with a result field, but if that failed,
-            # check for streaming JSONL log
+          # Fallback: scan JSONL log for last assistant text with ### headers
+          if [ -z "$RESULT" ]; then
             JSONL_LOG=$(find /home/runner/work/_temp -name "*.jsonl" 2>/dev/null | head -1)
             if [ -n "$JSONL_LOG" ]; then
-              node -e "
+              RESULT=$(node -e "
                 const lines = require('fs').readFileSync('$JSONL_LOG', 'utf8').trim().split('\n');
                 let lastText = '';
                 for (const line of lines) {
@@ -278,18 +275,26 @@ jobs:
                   } catch {}
                 }
                 process.stdout.write(lastText);
-              " > .claude-tmp/result.txt
+              ")
             fi
           fi
 
-      - name: Upload Claude output artifact
-        if: steps.verify.outputs.should_run == 'true' && always() && steps.claude.outcome != 'skipped'
+          # Strip any preamble before the first ### header
+          node -e "
+            const text = process.argv[1];
+            const idx = text.indexOf('### ');
+            const clean = idx >= 0 ? text.slice(idx) : text;
+            process.stdout.write(clean);
+          " "$RESULT" > .claude-tmp/pr-social-copy.md
+
+      - name: Upload social copy artifact
+        if: steps.verify.outputs.should_run == 'true' && always() && steps.extract.outcome == 'success'
         id: artifact
         uses: actions/upload-artifact@v4
         with:
-          name: social-copy-output-pr${{ github.event.issue.number }}
-          path: /home/runner/work/_temp/claude-execution-output.json
-          retention-days: 30
+          name: social-copy-pr${{ github.event.issue.number }}
+          path: .claude-tmp/pr-social-copy.md
+          retention-days: 90
 
       - name: Update comment with results
         if: steps.verify.outputs.should_run == 'true' && always() && steps.extract.outcome == 'success'
@@ -301,7 +306,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const output = fs.readFileSync('.claude-tmp/result.txt', 'utf8').trim() || '_Claude did not produce output. Please try again._';
+            const output = fs.readFileSync('.claude-tmp/pr-social-copy.md', 'utf8').trim() || '_Claude did not produce output. Please try again._';
             const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const artifactUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${process.env.ARTIFACT_ID}`;
@@ -317,7 +322,7 @@ jobs:
                 output,
                 '',
                 '---',
-                `_Generated at ${timestamp} from commit \`${process.env.HEAD_SHA}\` | [Workflow run](${runUrl}) | [Download full output](${artifactUrl})_`,
+                `_Generated at ${timestamp} from commit \`${process.env.HEAD_SHA}\` | [Workflow run](${runUrl}) | [Download markdown](${artifactUrl})_`,
                 '',
                 '- [ ] **Regenerate social media copies**',
               ].join('\n'),
