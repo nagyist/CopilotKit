@@ -195,8 +195,7 @@ jobs:
             - If the changes are internal/minor, still generate copy but note it's a maintenance/improvement update
           allowed_tools: "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),View,GlobTool,GrepTool"
           max_turns: "10"
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Update comment with results
         if: steps.verify.outputs.should_run == 'true' && success()
