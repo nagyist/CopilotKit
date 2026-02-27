@@ -131,6 +131,8 @@ jobs:
           COMMENT_ID: ${{ steps.verify.outputs.comment_id }}
         with:
           script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
             await github.rest.issues.updateComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -139,7 +141,7 @@ jobs:
                 '<!-- social-copy-generator -->',
                 '### 📣 Social Copy Generator',
                 '',
-                '⏳ **Analyzing PR changes with Claude...** This may take a minute.',
+                `⏳ **Analyzing PR changes with Claude...** This may take a minute. [View progress](${runUrl})`,
               ].join('\n'),
             });
 
