@@ -178,17 +178,20 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Write diff files inside the repo so Claude's sandbox can access them
+          mkdir -p .claude-tmp
+
           # Try git merge-base first (works for open PRs and merged PRs whose base is fetchable)
           MERGE_BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null) || true
 
           if [ -n "$MERGE_BASE" ]; then
-            git diff --stat "$MERGE_BASE"..HEAD > /tmp/diff-stat.txt
-            git diff "$MERGE_BASE"..HEAD > /tmp/diff-full.txt
+            git diff --stat "$MERGE_BASE"..HEAD > .claude-tmp/diff-stat.txt
+            git diff "$MERGE_BASE"..HEAD > .claude-tmp/diff-full.txt
           else
             # Fallback: use GitHub API diff (works for merged PRs where branch was deleted)
             echo "Using GitHub API for diff (merge-base not found)"
-            gh pr diff "$PR_NUMBER" --patch > /tmp/diff-full.txt
-            gh pr diff "$PR_NUMBER" | head -200 > /tmp/diff-stat.txt
+            gh pr diff "$PR_NUMBER" --patch > .claude-tmp/diff-full.txt
+            gh pr diff "$PR_NUMBER" | head -200 > .claude-tmp/diff-stat.txt
           fi
 
       - name: Run Claude Code
@@ -208,8 +211,8 @@ jobs:
             ${{ steps.pr.outputs.body }}
 
             ## Instructions
-            1. Read the diff stat file at `/tmp/diff-stat.txt` to understand the scope of changes.
-            2. Read the full diff at `/tmp/diff-full.txt` to understand the details.
+            1. Read the diff stat file at `.claude-tmp/diff-stat.txt` to understand the scope of changes.
+            2. Read the full diff at `.claude-tmp/diff-full.txt` to understand the details.
             3. If needed, read relevant source files to understand context.
             4. Generate the following three pieces of content:
 
@@ -241,11 +244,9 @@ jobs:
           OUTPUT_FILE="/home/runner/work/_temp/claude-execution-output.json"
           if [ -f "$OUTPUT_FILE" ]; then
             # Extract the result field from the JSON output
-            RESULT=$(node -e "const o=JSON.parse(require('fs').readFileSync('$OUTPUT_FILE','utf8')); process.stdout.write(o.result || '')")
-            # Write to file to avoid env var escaping issues
-            echo "$RESULT" > /tmp/claude-result.txt
+            node -e "const o=JSON.parse(require('fs').readFileSync('$OUTPUT_FILE','utf8')); process.stdout.write(o.result || '')" > .claude-tmp/result.txt
           else
-            echo "" > /tmp/claude-result.txt
+            echo "" > .claude-tmp/result.txt
           fi
 
       - name: Upload Claude output artifact
@@ -265,7 +266,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const output = fs.readFileSync('/tmp/claude-result.txt', 'utf8').trim() || '_Claude did not produce output. Please try again._';
+            const output = fs.readFileSync('.claude-tmp/result.txt', 'utf8').trim() || '_Claude did not produce output. Please try again._';
             const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
