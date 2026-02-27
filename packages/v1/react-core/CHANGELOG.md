@@ -1,5 +1,17 @@
 # ui
 
+## 1.52.1-next.1
+
+### Patch Changes
+
+- b555ac4: fix(react-core): allow overriding useSingleEndpoint in CopilotKit provider
+
+  The V1 `<CopilotKit>` provider previously hardcoded `useSingleEndpoint={true}` when wrapping the V2 provider, preventing users from opting into REST transport mode. The prop is now passed through from user config, defaulting to `true` to preserve backward compatibility.
+  - @copilotkit/runtime-client-gql@1.52.1-next.1
+  - @copilotkit/shared@1.52.1-next.1
+  - @copilotkitnext/core@1.52.1-next.1
+  - @copilotkitnext/react@1.52.1-next.1
+
 ## 1.52.1-next.0
 
 ### Patch Changes

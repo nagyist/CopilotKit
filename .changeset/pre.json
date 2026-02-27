@@ -48,6 +48,7 @@
     "@copilotkitnext/web-inspector": "1.52.0"
   },
   "changesets": [
+    "flexible-endpoint-mode",
     "strange-wolves-clean"
   ]
 }
