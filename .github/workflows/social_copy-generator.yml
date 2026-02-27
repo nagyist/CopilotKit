@@ -251,6 +251,7 @@ jobs:
 
       - name: Upload Claude output artifact
         if: steps.verify.outputs.should_run == 'true' && success()
+        id: artifact
         uses: actions/upload-artifact@v4
         with:
           name: social-copy-output-pr${{ github.event.issue.number }}
@@ -263,12 +264,14 @@ jobs:
         env:
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           COMMENT_ID: ${{ steps.verify.outputs.comment_id }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact-id }}
         with:
           script: |
             const fs = require('fs');
             const output = fs.readFileSync('.claude-tmp/result.txt', 'utf8').trim() || '_Claude did not produce output. Please try again._';
             const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const artifactUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${process.env.ARTIFACT_ID}`;
 
             await github.rest.issues.updateComment({
               owner: context.repo.owner,
@@ -281,7 +284,7 @@ jobs:
                 output,
                 '',
                 '---',
-                `_Generated at ${timestamp} from commit \`${process.env.HEAD_SHA}\` | [Full output](${runUrl})_`,
+                `_Generated at ${timestamp} from commit \`${process.env.HEAD_SHA}\` | [Workflow run](${runUrl}) | [Download full output](${artifactUrl})_`,
                 '',
                 '- [ ] **Regenerate social media copies**',
               ].join('\n'),
