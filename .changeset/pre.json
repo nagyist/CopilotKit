@@ -47,5 +47,7 @@
     "@copilotkit/voice": "1.52.0",
     "@copilotkitnext/web-inspector": "1.52.0"
   },
-  "changesets": []
+  "changesets": [
+    "strange-wolves-clean"
+  ]
 }

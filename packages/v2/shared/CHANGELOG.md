@@ -1,5 +1,7 @@
 # @copilotkitnext/shared
 
+## 1.52.1-next.0
+
 ## 1.52.0
 
 ### Patch Changes
