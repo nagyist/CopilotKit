@@ -16,7 +16,6 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
-  id-token: write
 
 jobs:
   post-comment:
@@ -194,61 +193,80 @@ jobs:
             gh pr diff "$PR_NUMBER" | head -200 > .claude-tmp/diff-stat.txt
           fi
 
+      - name: Install Claude Code
+        if: steps.verify.outputs.should_run == 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Write prompt file
+        if: steps.verify.outputs.should_run == 'true'
+        env:
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_BRANCH: ${{ steps.pr.outputs.head_ref }}
+          PR_BODY: ${{ steps.pr.outputs.body }}
+        run: |
+          cat << 'PROMPT_EOF' > .claude-tmp/prompt.txt
+          You are a developer advocate and social media copywriter for CopilotKit — an open-source AI agent framework that lets developers add AI copilots to their products with React hooks, UI components, and agent infrastructure. CopilotKit connects frontend (React/Angular), runtime (Express/Hono), and AI agents (LangGraph, CrewAI, custom) via the AG-UI protocol.
+
+          A PR has been opened. Your job is to analyze the changes and generate social media copy that the team can use to announce this work.
+
+          ## PR Information
+          PROMPT_EOF
+
+          echo "- **Title:** $PR_TITLE" >> .claude-tmp/prompt.txt
+          echo "- **Branch:** $PR_BRANCH" >> .claude-tmp/prompt.txt
+          echo "- **Description:**" >> .claude-tmp/prompt.txt
+          echo "$PR_BODY" >> .claude-tmp/prompt.txt
+
+          cat << 'PROMPT_EOF' >> .claude-tmp/prompt.txt
+
+          ## Instructions
+          1. Read the diff stat file at `.claude-tmp/diff-stat.txt` to understand the scope of changes.
+          2. Read the full diff at `.claude-tmp/diff-full.txt` to understand the details.
+          3. If needed, read relevant source files to understand context.
+          4. Generate the following three pieces of content:
+
+          ### Output Format
+          Produce your output in EXACTLY this format (including the markdown headers).
+          Do NOT include any preamble, analysis summary, or commentary before or after the three sections.
+          Start directly with the first header:
+
+          ### 🐦 Twitter/X Post
+          (A concise, engaging tweet under 280 characters. No hashtags. Focus on the user benefit.)
+
+          ### 💼 LinkedIn Post
+          (A professional post of 3-5 short paragraphs. Lead with the value proposition. Include a call to action. Add relevant hashtags. No length limit.)
+
+          ### 📝 Blog Post Draft
+          (A blog-style announcement. Include a title, explain what changed, why it matters, and how to get started. No length limit — be as thorough as needed.)
+
+          ## Guidelines
+          - Focus on user-facing impact, not implementation details
+          - Be enthusiastic but authentic — avoid hype
+          - Mention CopilotKit by name and link to https://github.com/CopilotKit/CopilotKit
+          - If the changes are internal/minor, still generate copy but note it's a maintenance/improvement update
+          PROMPT_EOF
+
       - name: Run Claude Code
         if: steps.verify.outputs.should_run == 'true'
         id: claude
-        uses: anthropics/claude-code-base-action@beta
-        with:
-          prompt: |
-            You are a developer advocate and social media copywriter for CopilotKit — an open-source AI agent framework that lets developers add AI copilots to their products with React hooks, UI components, and agent infrastructure. CopilotKit connects frontend (React/Angular), runtime (Express/Hono), and AI agents (LangGraph, CrewAI, custom) via the AG-UI protocol.
-
-            A new PR has been opened. Your job is to analyze the changes and generate social media copy that the team can use to announce this work.
-
-            ## PR Information
-            - **Title:** ${{ steps.pr.outputs.title }}
-            - **Branch:** ${{ steps.pr.outputs.head_ref }}
-            - **Description:**
-            ${{ steps.pr.outputs.body }}
-
-            ## Instructions
-            1. Read the diff stat file at `.claude-tmp/diff-stat.txt` to understand the scope of changes.
-            2. Read the full diff at `.claude-tmp/diff-full.txt` to understand the details.
-            3. If needed, read relevant source files to understand context.
-            4. Generate the following three pieces of content:
-
-            ### Output Format
-            Produce your output in EXACTLY this format (including the markdown headers).
-            Do NOT include any preamble, analysis summary, or commentary before or after the three sections.
-            Start directly with the first header:
-
-            ### 🐦 Twitter/X Post
-            (A concise, engaging tweet under 280 characters. No hashtags. Focus on the user benefit.)
-
-            ### 💼 LinkedIn Post
-            (A professional post of 3-5 short paragraphs. Lead with the value proposition. Include a call to action. Add relevant hashtags. No length limit.)
-
-            ### 📝 Blog Post Draft
-            (A blog-style announcement. Include a title, explain what changed, why it matters, and how to get started. No length limit — be as thorough as needed.)
-
-            ## Guidelines
-            - Focus on user-facing impact, not implementation details
-            - Be enthusiastic but authentic — avoid hype
-            - Mention CopilotKit by name and link to https://github.com/CopilotKit/CopilotKit
-            - If the changes are internal/minor, still generate copy but note it's a maintenance/improvement update
-          allowed_tools: "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Read,View,GlobTool,GrepTool"
-          disallowed_tools: "TodoWrite,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
-          max_turns: "10"
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          PROMPT=$(cat .claude-tmp/prompt.txt)
+          claude -p "$PROMPT" \
+            --output-format json \
+            --max-turns 10 \
+            --allowedTools "Read,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*)" \
+            --disallowedTools "TodoWrite,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task" \
+            > .claude-tmp/claude-output.json
 
       - name: Extract result to markdown
         if: steps.verify.outputs.should_run == 'true' && always() && steps.claude.outcome != 'skipped'
         id: extract
-        env:
-          OUTPUT_FILE: /home/runner/work/_temp/claude-execution-output.json
         run: |
           node << 'EXTRACT_SCRIPT' > .claude-tmp/pr-social-copy.md
             const fs = require('fs');
-            const file = process.env.OUTPUT_FILE;
+            const file = '.claude-tmp/claude-output.json';
 
             if (!fs.existsSync(file)) {
               process.exit(0);
@@ -257,28 +275,27 @@ jobs:
             const raw = fs.readFileSync(file, 'utf8').trim();
             let result = '';
 
-            // The file is JSONL (one JSON object per line), not a single JSON object.
-            // Parse each line and look for the result.
-            const lines = raw.split('\n');
-            for (const line of lines) {
-              try {
-                const obj = JSON.parse(line);
-
-                // Primary: find the "type": "result" entry with a result field
-                if (obj.type === 'result' && obj.result) {
-                  result = obj.result;
-                }
-
-                // Secondary: track the last assistant text containing ### headers
-                // (covers error_during_execution where result is missing)
-                if (!result && obj.type === 'assistant' && obj.message?.content) {
-                  for (const block of obj.message.content) {
-                    if (block.type === 'text' && block.text && block.text.includes('### ')) {
-                      result = block.text;
+            // With --output-format json, output is a single JSON object with a "result" field
+            try {
+              const obj = JSON.parse(raw);
+              result = obj.result || '';
+            } catch {
+              // Fallback: try JSONL format (one JSON object per line)
+              for (const line of raw.split('\n')) {
+                try {
+                  const obj = JSON.parse(line);
+                  if (obj.type === 'result' && obj.result) {
+                    result = obj.result;
+                  }
+                  if (!result && obj.type === 'assistant' && obj.message?.content) {
+                    for (const block of obj.message.content) {
+                      if (block.type === 'text' && block.text && block.text.includes('### ')) {
+                        result = block.text;
+                      }
                     }
                   }
-                }
-              } catch {}
+                } catch {}
+              }
             }
 
             // Strip any preamble before the first ### header
