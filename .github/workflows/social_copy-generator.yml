@@ -243,49 +243,49 @@ jobs:
       - name: Extract result to markdown
         if: steps.verify.outputs.should_run == 'true' && always() && steps.claude.outcome != 'skipped'
         id: extract
+        env:
+          OUTPUT_FILE: /home/runner/work/_temp/claude-execution-output.json
         run: |
-          OUTPUT_FILE="/home/runner/work/_temp/claude-execution-output.json"
-          RESULT=""
+          node << 'EXTRACT_SCRIPT' > .claude-tmp/pr-social-copy.md
+            const fs = require('fs');
+            const file = process.env.OUTPUT_FILE;
 
-          # Try result field from output JSON
-          if [ -f "$OUTPUT_FILE" ]; then
-            RESULT=$(node -e "
-              const o = JSON.parse(require('fs').readFileSync('$OUTPUT_FILE', 'utf8'));
-              process.stdout.write(o.result || '');
-            ")
-          fi
+            if (!fs.existsSync(file)) {
+              process.exit(0);
+            }
 
-          # Fallback: scan JSONL log for last assistant text with ### headers
-          if [ -z "$RESULT" ]; then
-            JSONL_LOG=$(find /home/runner/work/_temp -name "*.jsonl" 2>/dev/null | head -1)
-            if [ -n "$JSONL_LOG" ]; then
-              RESULT=$(node -e "
-                const lines = require('fs').readFileSync('$JSONL_LOG', 'utf8').trim().split('\n');
-                let lastText = '';
-                for (const line of lines) {
-                  try {
-                    const obj = JSON.parse(line);
-                    if (obj.type === 'assistant' && obj.message?.content) {
-                      for (const block of obj.message.content) {
-                        if (block.type === 'text' && block.text && block.text.includes('###')) {
-                          lastText = block.text;
-                        }
-                      }
-                    }
-                  } catch {}
+            const raw = fs.readFileSync(file, 'utf8').trim();
+            let result = '';
+
+            // The file is JSONL (one JSON object per line), not a single JSON object.
+            // Parse each line and look for the result.
+            const lines = raw.split('\n');
+            for (const line of lines) {
+              try {
+                const obj = JSON.parse(line);
+
+                // Primary: find the "type": "result" entry with a result field
+                if (obj.type === 'result' && obj.result) {
+                  result = obj.result;
                 }
-                process.stdout.write(lastText);
-              ")
-            fi
-          fi
 
-          # Strip any preamble before the first ### header
-          node -e "
-            const text = process.argv[1];
-            const idx = text.indexOf('### ');
-            const clean = idx >= 0 ? text.slice(idx) : text;
+                // Secondary: track the last assistant text containing ### headers
+                // (covers error_during_execution where result is missing)
+                if (!result && obj.type === 'assistant' && obj.message?.content) {
+                  for (const block of obj.message.content) {
+                    if (block.type === 'text' && block.text && block.text.includes('### ')) {
+                      result = block.text;
+                    }
+                  }
+                }
+              } catch {}
+            }
+
+            // Strip any preamble before the first ### header
+            const idx = result.indexOf('### ');
+            const clean = idx >= 0 ? result.slice(idx) : result;
             process.stdout.write(clean);
-          " "$RESULT" > .claude-tmp/pr-social-copy.md
+          EXTRACT_SCRIPT
 
       - name: Upload social copy artifact
         if: steps.verify.outputs.should_run == 'true' && always() && steps.extract.outcome == 'success'
