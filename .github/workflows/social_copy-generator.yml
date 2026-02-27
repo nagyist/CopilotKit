@@ -20,7 +20,9 @@ permissions:
 
 jobs:
   post-comment:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - name: Post initial comment
@@ -30,6 +32,19 @@ jobs:
         with:
           script: |
             const prNumber = Number(process.env.PR_NUMBER);
+
+            // For workflow_dispatch, verify the PR isn't from a fork
+            if (context.eventName === 'workflow_dispatch') {
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+              if (pr.data.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+                console.log('PR is from a fork, skipping');
+                return;
+              }
+            }
 
             // Check if there's already a social-copy-generator comment on this PR
             const comments = await github.rest.issues.listComments({
@@ -69,11 +84,31 @@ jobs:
       group: social-copy-${{ github.event.issue.number }}
       cancel-in-progress: true
     steps:
-      - name: Verify checkbox transition
+      - name: Verify checkbox transition and permissions
         id: verify
         uses: actions/github-script@v7
         with:
           script: |
+            // Check that the sender has write access (not an external collaborator or random user)
+            const sender = context.payload.sender.login;
+            try {
+              const { data: permissionLevel } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: sender,
+              });
+              const allowed = ['admin', 'write'];
+              if (!allowed.includes(permissionLevel.permission)) {
+                core.setOutput('should_run', 'false');
+                console.log(`User ${sender} has '${permissionLevel.permission}' permission, skipping`);
+                return;
+              }
+            } catch (e) {
+              core.setOutput('should_run', 'false');
+              console.log(`Could not verify permissions for ${sender}, skipping`);
+              return;
+            }
+
             const oldBody = context.payload.changes?.body?.from || '';
             const newBody = context.payload.comment.body;
 
@@ -96,6 +131,8 @@ jobs:
           COMMENT_ID: ${{ steps.verify.outputs.comment_id }}
         with:
           script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
             await github.rest.issues.updateComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -104,7 +141,7 @@ jobs:
                 '<!-- social-copy-generator -->',
                 '### 📣 Social Copy Generator',
                 '',
-                '⏳ **Analyzing PR changes with Claude...** This may take a minute.',
+                `⏳ **Analyzing PR changes with Claude...** This may take a minute. [View progress](${runUrl})`,
               ].join('\n'),
             });
 
@@ -141,17 +178,20 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Write diff files inside the repo so Claude's sandbox can access them
+          mkdir -p .claude-tmp
+
           # Try git merge-base first (works for open PRs and merged PRs whose base is fetchable)
           MERGE_BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null) || true
 
           if [ -n "$MERGE_BASE" ]; then
-            git diff --stat "$MERGE_BASE"..HEAD > /tmp/diff-stat.txt
-            git diff "$MERGE_BASE"..HEAD > /tmp/diff-full.txt
+            git diff --stat "$MERGE_BASE"..HEAD > .claude-tmp/diff-stat.txt
+            git diff "$MERGE_BASE"..HEAD > .claude-tmp/diff-full.txt
           else
             # Fallback: use GitHub API diff (works for merged PRs where branch was deleted)
             echo "Using GitHub API for diff (merge-base not found)"
-            gh pr diff "$PR_NUMBER" --patch > /tmp/diff-full.txt
-            gh pr diff "$PR_NUMBER" | head -200 > /tmp/diff-stat.txt
+            gh pr diff "$PR_NUMBER" --patch > .claude-tmp/diff-full.txt
+            gh pr diff "$PR_NUMBER" | head -200 > .claude-tmp/diff-stat.txt
           fi
 
       - name: Run Claude Code
@@ -171,8 +211,8 @@ jobs:
             ${{ steps.pr.outputs.body }}
 
             ## Instructions
-            1. Read the diff stat file at `/tmp/diff-stat.txt` to understand the scope of changes.
-            2. Read the full diff at `/tmp/diff-full.txt` to understand the details.
+            1. Read the diff stat file at `.claude-tmp/diff-stat.txt` to understand the scope of changes.
+            2. Read the full diff at `.claude-tmp/diff-full.txt` to understand the details.
             3. If needed, read relevant source files to understand context.
             4. Generate the following three pieces of content:
 
@@ -193,21 +233,42 @@ jobs:
             - Be enthusiastic but authentic — avoid hype
             - Mention CopilotKit by name and link to https://github.com/CopilotKit/CopilotKit
             - If the changes are internal/minor, still generate copy but note it's a maintenance/improvement update
-          allowed_tools: "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),View,GlobTool,GrepTool"
+          allowed_tools: "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Read,View,GlobTool,GrepTool"
           max_turns: "10"
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Extract Claude result
+        if: steps.verify.outputs.should_run == 'true' && success()
+        id: extract
+        run: |
+          OUTPUT_FILE="/home/runner/work/_temp/claude-execution-output.json"
+          if [ -f "$OUTPUT_FILE" ]; then
+            # Extract the result field from the JSON output
+            node -e "const o=JSON.parse(require('fs').readFileSync('$OUTPUT_FILE','utf8')); process.stdout.write(o.result || '')" > .claude-tmp/result.txt
+          else
+            echo "" > .claude-tmp/result.txt
+          fi
+
+      - name: Upload Claude output artifact
+        if: steps.verify.outputs.should_run == 'true' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: social-copy-output-pr${{ github.event.issue.number }}
+          path: /home/runner/work/_temp/claude-execution-output.json
+          retention-days: 30
 
       - name: Update comment with results
         if: steps.verify.outputs.should_run == 'true' && success()
         uses: actions/github-script@v7
         env:
-          CLAUDE_RESULT: ${{ steps.claude.outputs.result }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           COMMENT_ID: ${{ steps.verify.outputs.comment_id }}
         with:
           script: |
-            const output = (process.env.CLAUDE_RESULT || '').trim() || '_Claude did not produce output. Please try again._';
+            const fs = require('fs');
+            const output = fs.readFileSync('.claude-tmp/result.txt', 'utf8').trim() || '_Claude did not produce output. Please try again._';
             const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             await github.rest.issues.updateComment({
               owner: context.repo.owner,
@@ -220,7 +281,7 @@ jobs:
                 output,
                 '',
                 '---',
-                `_Generated at ${timestamp} from commit \`${process.env.HEAD_SHA}\`_`,
+                `_Generated at ${timestamp} from commit \`${process.env.HEAD_SHA}\` | [Full output](${runUrl})_`,
                 '',
                 '- [ ] **Regenerate social media copies**',
               ].join('\n'),
